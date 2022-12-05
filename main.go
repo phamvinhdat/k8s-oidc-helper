@@ -2,26 +2,29 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"os/user"
 	"path/filepath"
 	"strings"
 
 	"github.com/ghodss/yaml"
-	"github.com/micahhausler/k8s-oidc-helper/internal/helper"
+	"github.com/phamvinhdat/k8s-oidc-helper/internal/helper"
+	_ "github.com/phamvinhdat/k8s-oidc-helper/internal/server"
 	flag "github.com/spf13/pflag"
-	viper "github.com/spf13/viper"
+	"github.com/spf13/viper"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
 	k8s_runtime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	clientcmdlatest "k8s.io/client-go/tools/clientcmd/api/latest"
 )
 
-const Version = "v0.1.0"
-
-const oauthUrl = "https://accounts.google.com/o/oauth2/auth?redirect_uri=urn:ietf:wg:oauth:2.0:oob&response_type=code&client_id=%s&scope=openid+email+profile&approval_prompt=force&access_type=offline"
+const Version = "v1.0.0"
 
 func main() {
 	flag.BoolP("version", "v", false, "Print version and exit")
@@ -32,7 +35,7 @@ func main() {
 	flag.BoolP("write", "w", false, "Write config to file. Merges in the specified file")
 	flag.String("file", "", "The file to write to. If not specified, `~/.kube/config` is used")
 
-	viper.BindPFlags(flag.CommandLine)
+	_ = viper.BindPFlags(flag.CommandLine)
 	viper.SetEnvPrefix("k8s-oidc-helper")
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
@@ -44,8 +47,10 @@ func main() {
 		os.Exit(0)
 	}
 
-	var gcf *helper.GoogleConfig
-	var err error
+	var (
+		gcf *helper.GoogleConfig
+		err error
+	)
 	if configFile := viper.GetString("config"); len(viper.GetString("config")) > 0 {
 		gcf, err = helper.ReadConfig(configFile)
 		if err != nil {
@@ -64,17 +69,34 @@ func main() {
 		clientSecret = viper.GetString("client-secret")
 	}
 
-	helper.LaunchBrowser(viper.GetBool("open"), oauthUrl, clientID)
+	oauthConfig := oauth2.Config{
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		Endpoint:     google.Endpoint,
+		RedirectURL:  "http://localhost:8080",
+		Scopes: []string{
+			"openid",
+			"email",
+			"profile",
+		},
+	}
 
+	authURL := oauthConfig.AuthCodeURL("", oauth2.AccessTypeOffline, oauth2.ApprovalForce)
+	helper.LaunchBrowser(viper.GetBool("open"), authURL, clientID)
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Print("Enter the code Google gave you: ")
 	code, _ := reader.ReadString('\n')
 	code = strings.TrimSpace(code)
 
-	tokResponse, err := helper.GetToken(clientID, clientSecret, code)
+	tokResponse, err := oauthConfig.Exchange(context.Background(), code, oauth2.AccessTypeOffline, oauth2.ApprovalForce)
 	if err != nil {
 		fmt.Printf("Error getting tokens: %s\n", err)
 		os.Exit(1)
+	}
+
+	rawIDToken, ok := tokResponse.Extra("id_token").(string)
+	if !ok {
+		log.Fatalln("missing id_token. require scope=openid")
 	}
 
 	email, err := helper.GetUserEmail(tokResponse.AccessToken)
@@ -83,7 +105,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	authInfo := helper.GenerateAuthInfo(clientID, clientSecret, tokResponse.IdToken, tokResponse.RefreshToken)
+	authInfo := helper.GenerateAuthInfo(clientID, clientSecret, rawIDToken, tokResponse.RefreshToken)
 	config := &clientcmdapi.Config{
 		AuthInfos: map[string]*clientcmdapi.AuthInfo{email: authInfo},
 	}

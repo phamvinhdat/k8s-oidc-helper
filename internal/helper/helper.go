@@ -3,6 +3,7 @@ package helper
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -39,29 +40,6 @@ func ReadConfig(path string) (*GoogleConfig, error) {
 		return nil, err
 	}
 	return cf.Installed, nil
-}
-
-// Get the id_token and refresh_token from google
-func GetToken(clientID, clientSecret, code string) (*TokenResponse, error) {
-	val := url.Values{}
-	val.Add("grant_type", "authorization_code")
-	val.Add("redirect_uri", "urn:ietf:wg:oauth:2.0:oob")
-	val.Add("client_id", clientID)
-	val.Add("client_secret", clientSecret)
-	val.Add("code", code)
-
-	resp, err := http.PostForm("https://www.googleapis.com/oauth2/v3/token", val)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	tr := &TokenResponse{}
-	err = json.NewDecoder(resp.Body).Decode(tr)
-	if err != nil {
-		return nil, err
-	}
-	return tr, nil
 }
 
 type KubectlUser struct {
@@ -139,7 +117,7 @@ func createOpenCmd(oauthUrl, clientID string) (*exec.Cmd, error) {
 }
 
 func LaunchBrowser(openBrowser bool, oauthUrl, clientID string) {
-	openInstructions := fmt.Sprintf("Open this url in your browser: %s\n", fmt.Sprintf(oauthUrl, clientID))
+	openInstructions := fmt.Sprintf("Open this url in your browser: %s\n", oauthUrl)
 
 	if !openBrowser {
 		fmt.Print(openInstructions)
@@ -152,8 +130,9 @@ func LaunchBrowser(openBrowser bool, oauthUrl, clientID string) {
 		return
 	}
 
-	err = cmd.Start()
+	err = cmd.Run()
 	if err != nil {
+		log.Printf("auto open in browser error: %s. open by yourself", err)
 		fmt.Print(openInstructions)
 	}
 }

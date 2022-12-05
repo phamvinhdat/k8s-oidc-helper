@@ -2,7 +2,7 @@ FROM golang:1.9-alpine as builder
 
 RUN apk add -U ca-certificates
 
-ENV PKG=/go/src/github.com/micahhausler/k8s-oidc-helper
+ENV PKG=/go/src/github.com/phamvinhdat/k8s-oidc-helper
 ADD . $PKG
 WORKDIR $PKG
 

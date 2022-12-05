@@ -1,0 +1,18 @@
+<!-- The text field -->
+<div id="myInput">{{ .code }}</div>
+
+<!-- The button used to copy the text -->
+<button onclick="myFunction()">Copy text</button>
+
+<script>
+  function myFunction() {
+    // Get the text field
+    const copyText = document.getElementById("myInput").textContent
+
+    // Copy the text inside the text field
+    navigator.clipboard.writeText(copyText);
+
+    // Alert the copied text
+    alert("Copied the text: " + copyText);
+  }
+</script>
