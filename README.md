@@ -7,6 +7,11 @@ This is a small helper tool to get a user get authenticated with
 [Kubernetes OIDC](http://kubernetes.io/docs/admin/authentication/) using Google
 as the Identity Provider.
 
+## install:
+```shell
+go install github.com/phamvinhdat/k8s-oidc-helper@latest
+```
+
 Given a ClientID and ClientSecret, the tool will output the necessary
 configuration for `kubectl` that you can add to `~/.kube/config`
 
